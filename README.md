@@ -102,12 +102,5 @@ mail.security = mailcoil.CMS().sign(signer_keyfile = "my_key.pem", signer_certfi
 dropoff.post(mail)
 ```
 
-from .MailDropoff import MailDropoff
-from .Email import Email, MailAddress
-from .CMS import CMS
-from .Exceptions import MailCoilException
-
-VERSION = "0.0.1rc0"
-
 ## License
 GNU GPL-3.
