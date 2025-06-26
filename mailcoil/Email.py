@@ -25,8 +25,7 @@ import time
 import textwrap
 import dataclasses
 import mimetypes
-from email.mime.multipart import MIMEMultipart
-from email.mime.nonmultipart import MIMENonMultipart
+import email.policy
 import mailcoil
 from .Exceptions import NoRecipientException, NoBodyException
 
@@ -67,13 +66,6 @@ class SerializedEmail():
 	recipients: list[str]
 	content: bytes
 
-
-class MIMEGeneric(MIMENonMultipart):
-	def __init__(self, payload: bytes, maintype: str, subtype: str, encoder: "callable"):
-		MIMENonMultipart.__init__(self, maintype, subtype, policy = None)
-		self.set_payload(payload)
-		encoder(self)
-
 @dataclasses.dataclass(slots = True)
 class Attachment():
 	data: bytes
@@ -82,12 +74,6 @@ class Attachment():
 	filename: str
 	inline: bool
 	content_id: str
-
-	def as_mime(self):
-		mime = MIMEGeneric(self.data, self.maintype, self.subtype, encoder = email.encoders.encode_base64)
-		mime["Content-Disposition"] = f"{'inline' if self.inline else 'attachment'}; filename=\"{self.filename}\""
-		mime["Content-ID"] = self.content_id
-		return mime
 
 class Email():
 	def __init__(self, from_address: MailAddress | str, subject: str | None = None, text: str | None = None, wrap_text: bool = False, html: str | None = None, security: "SMIME | None" = None):
@@ -202,10 +188,6 @@ class Email():
 			wrapped += parwrapped
 		return "\n".join(wrapped)
 
-	def _render_text_quopri(self, text: str, subtype: str):
-		part = MIMEGeneric(text.encode("utf-8"), "text", subtype, encoder = email.encoders.encode_7or8bit)
-		part.set_param("charset", "utf-8", header = "Content-Type")
-		return part
 
 	def _layer_text_content(self):
 		if self.recipient_count == 0:
@@ -214,28 +196,28 @@ class Email():
 		if (self.text is None) and (self.html is None):
 			raise NoBodyException("Mail has no text or HTML content.")
 
+		msg = email.message.EmailMessage()
+
 		if (self.text is not None) and (self.html is not None):
 			# text and HTML as multipart/alternative
-			msg = MIMEMultipart("alternative")
-			msg.attach(self._render_text_quopri(self.wrapped_text, "plain"))
-			msg.attach(self._render_text_quopri(self.html, "html"))
-		elif self.text is not None:
-			msg = self._render_text_quopri(self.wrapped_text, "plain")
+			msg.set_content(self.wrapped_text, subtype = "plain")
+			msg.add_alternative(self.html, subtype = "html")
+		elif self.html is None:
+			msg.set_content(self.wrapped_text, subtype = "plain")
 		else:
-			msg = self._render_text_quopri(self.html, "html")
+			# HTML only
+			msg.set_content(self.html, subtype = "html")
 		return msg
 
-	def _layer_attachments(self, prev_layer: "MIMEBase"):
-		if len(self._attachments) == 0:
-			msg = prev_layer
-		else:
-			msg = MIMEMultipart("related")
-			msg.attach(prev_layer)
-			for attachment in self._attachments:
-				msg.attach(attachment.as_mime())
+	def _layer_attachments(self, msg: "EmailMessage"):
+		for attachment in self._attachments:
+			if not attachment.inline:
+				msg.add_attachment(attachment.data, maintype = attachment.maintype, subtype = attachment.subtype, filename = attachment.filename)
+			else:
+				msg.add_attachment(attachment.data, maintype = attachment.maintype, subtype = attachment.subtype, filename = attachment.filename, disposition = "inline", cid = attachment.content_id)
 		return msg
 
-	def _layer_security(self, prev_layer: "MIMEBase"):
+	def _layer_security(self, prev_layer: "EmailMessage"):
 		if self._security is None:
 			msg = prev_layer
 		else:
