@@ -49,11 +49,19 @@ class MailAddress():
 		elif isinstance(addr, dict):
 			return MailAddress(mail = addr.get("mail"), name = addr.get("name"))
 		else:
-			((name, mail), ) = email.utils.getaddresses([ addr ])
+			(name, mail) = email.utils.parseaddr(addr)
 			if name == "":
 				return cls(mail = mail)
 			else:
-				return cls(mail = mail, name = name)
+				((name_bindata, encoding), ) = email.header.decode_header(name)
+				if encoding is None:
+					return cls(mail = mail, name = name)
+				else:
+					return cls(mail = mail, name = name_bindata.decode(encoding))
+
+	@classmethod
+	def parsemany(cls, addrs: str):
+		return [ cls.parse(addr) for addr in addrs.split(",") ]
 
 @dataclasses.dataclass
 class SerializedEmail():
@@ -96,6 +104,7 @@ class Email():
 		self._datetime = time.time()
 		self._message_id = f"<{os.urandom(16).hex()}@mailcoil>"
 		self._attachments = [ ]
+		self._user_agent = None
 
 	@property
 	def recipient_count(self):
@@ -112,6 +121,14 @@ class Email():
 	def bcc(self, *mail_addresses: tuple[MailAddress | str]):
 		self._bcc += [ MailAddress.parse(addr) for addr in mail_addresses ]
 		return self
+
+	@property
+	def user_agent(self):
+		return self._user_agent
+
+	@user_agent.setter
+	def user_agent(self, value: str):
+		self._user_agent = value
 
 	@property
 	def subject(self):
@@ -169,10 +186,12 @@ class Email():
 		self._attachments.append(attachment)
 		return f"cid:{attachment.content_id}"
 
-	def attach(self, filename: str, mimetype: str | None = None, inline: bool = False, cid: str | None = None):
+	def attach(self, filename: str, mimetype: str | None = None, shown_filename: str | None = None, inline: bool = False, cid: str | None = None):
 		with open(filename, "rb") as f:
 			data = f.read()
-		return self.attach_data(data, filename = os.path.basename(filename), mimetype = mimetype, inline = inline, cid = cid)
+		if shown_filename is None:
+			shown_filename = os.path.basename(filename)
+		return self.attach_data(data, filename = shown_filename, mimetype = mimetype, inline = inline, cid = cid)
 
 	@staticmethod
 	def _wrap_paragraphs(text: str) -> str:
@@ -233,7 +252,10 @@ class Email():
 			msg["Subject"] = self._subject
 		msg["Message-ID"] = self._message_id
 		msg["Date"] = email.utils.formatdate(self._datetime, localtime = True)
-		msg["User-Agent"] = f"mailcoil v{mailcoil.VERSION}"
+		if self.user_agent is None:
+			msg["User-Agent"] = f"mailcoil v{mailcoil.VERSION}"
+		else:
+			msg["User-Agent"] = f"{self.user_agent} via mailcoil v{mailcoil.VERSION}"
 		msg["From"] = self._from.encode()
 		if len(self._to) > 0:
 			msg["To"] = ", ".join([address.encode() for address in self._to ])
