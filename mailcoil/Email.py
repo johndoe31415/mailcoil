@@ -25,6 +25,7 @@ import time
 import textwrap
 import dataclasses
 import mimetypes
+from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.nonmultipart import MIMENonMultipart
 import mailcoil
@@ -45,6 +46,8 @@ class MailAddress():
 	def parse(cls, addr: "MailAddress | str"):
 		if isinstance(addr, cls):
 			return addr
+		elif isinstance(addr, dict):
+			return MailAddress(mail = addr.get("mail"), name = addr.get("name"))
 		else:
 			((name, mail), ) = email.utils.getaddresses([ addr ])
 			if name == "":
@@ -182,7 +185,7 @@ class Email():
 		return "\n".join(wrapped)
 
 	def _render_text_quopri(self, text: str, subtype: str):
-		part = MIMEGeneric(text.encode("utf-8"), "text", subtype, encoder = email.encoders.encode_quopri)
+		part = MIMEGeneric(text.encode("utf-8"), "text", subtype, encoder = email.encoders.encode_7or8bit)
 		part.set_param("charset", "utf-8", header = "Content-Type")
 		return part
 
