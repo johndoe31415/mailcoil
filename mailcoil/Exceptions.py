@@ -22,3 +22,4 @@
 class MailCoilException(Exception): pass
 class NoRecipientException(MailCoilException): pass
 class NoBodyException(MailCoilException): pass
+class MaildropFailedException(MailCoilException): pass

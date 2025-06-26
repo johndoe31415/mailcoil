@@ -21,7 +21,10 @@
 
 import enum
 import urllib.parse
+import time
 import smtplib
+import imaplib
+from .Exceptions import MaildropFailedException
 
 class MailDropoff():
 	class Scheme(enum.Enum):
@@ -30,10 +33,12 @@ class MailDropoff():
 		SMTP = "smtp"
 		SMTPS = "smtps"
 		SMTP_STARTTLS = "smtp+startls"
+		IMAP = "imap"
+		IMAPS = "imaps"
 
 	_SCHEME_BY_NAME = { scheme.value: scheme for scheme in Scheme }
 
-	def __init__(self, scheme: Scheme, host: str, port: int | None = None, username: str | None = None, password: str | None = None):
+	def __init__(self, scheme: Scheme, host: str, port: int | None = None, username: str | None = None, password: str | None = None, path: str | None = None):
 		self._scheme = scheme
 		self._host = host
 		if port is None:
@@ -43,11 +48,18 @@ class MailDropoff():
 				self.Scheme.SMTP:			25,
 				self.Scheme.SMTPS:			465,
 				self.Scheme.SMTP_STARTTLS:	25,
+				self.Scheme.IMAP:			143,
+				self.Scheme.IMAPS:			993,
 			}[self._scheme]
 		else:
 			self._port = port
 		self._username = username
 		self._password = password
+		self._path = (path or "").lstrip("/")
+		if self._path == "":
+			self._path = None
+		if (self._scheme in [ self.Scheme.IMAP, self.Scheme.IMAPS ]) and (self._path is None):
+			raise ValueError("For storing an email on IMAP, you need to specify a mailbox folder as a path.")
 
 	@classmethod
 	def parse_uri(cls, uri: str):
@@ -60,7 +72,8 @@ class MailDropoff():
 			port = int(port)
 		else:
 			(host, port) = (parsed.netloc, None)
-		return cls(scheme = scheme, host = host, port = port)
+
+		return cls(scheme = scheme, host = host, port = port, path = parsed.path)
 
 	@property
 	def username(self):
@@ -78,7 +91,7 @@ class MailDropoff():
 	def password(self, value: str):
 		self._password = value
 
-	def postall(self, mails: list["Email"]):
+	def _postall_smtp(self, mails: list["Email"]):
 		conn_class = smtplib.SMTP_SSL if (self._scheme == self.Scheme.SMTPS) else smtplib.SMTP
 		with conn_class(self._host, self._port) as conn:
 			try:
@@ -92,6 +105,39 @@ class MailDropoff():
 					conn.send_message(serialized_mail.content, to_addrs = serialized_mail.recipients)
 			finally:
 				conn.quit()
+
+	def _postall_imap(self, mails: list["Email"]):
+		conn_class = imaplib.IMAP4_SSL if (self._scheme == self.Scheme.IMAPS) else imaplib.IMAP4
+		with conn_class(self._host, self._port) as conn:
+			try:
+				if (self._username is not None) and (self._password is not None):
+					try:
+						conn.login(self._username, self._password)
+					except imaplib.IMAP4.error as e:
+						raise MaildropFailedException(f"Login to {self._scheme.name} server {self._host}:{self._port} failed: {str(e)}") from e
+				else:
+					raise MaildropFailedException(f"IMAP delivery requires authentication.")
+
+				(status, imap_rsp) = conn.select(mailbox = self._path)
+				if status != "OK":
+					raise MaildropFailedException(f"No such IMAP mailbox \"{self._path}\" on {self._host}:{self._port}: {str(imap_rsp)}")
+
+				for mail in mails:
+					serialized_mail = mail.serialize()
+					imap_date_time = imaplib.Time2Internaldate(time.time())
+					(status, imap_rsp) = conn.append(mailbox = self._path, flags = None, date_time = imap_date_time, message = bytes(serialized_mail.content))
+					if status != "OK":
+						raise MaildropFailedException(f"Unable to append message to \"{self._path}\" on {self._host}:{self._port}: {str(imap_rsp)}")
+			finally:
+				conn.logout()
+
+	def postall(self, mails: list["Email"]):
+		if self._scheme in [ self.Scheme.LMTP, self.Scheme.LMTP_STARTTLS, self.Scheme.SMTP, self.Scheme.SMTPS, self.Scheme.SMTP_STARTTLS ]:
+			return self._postall_smtp(mails)
+		elif self._scheme in [ self.Scheme.IMAP, self.Scheme.IMAPS ]:
+			return self._postall_imap(mails)
+		else:
+			raise NotImplementedError(self._scheme)
 
 	def post(self, mail: "Email"):
 		return self.postall([ mail ])

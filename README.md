@@ -2,7 +2,9 @@
 Mailcoil is a small SMTP wrapper around Python's native functionality that
 makes several tasks easier, namely constructing mails that contain referenced
 inline attachments (e.g., images that are referenced from within HTML mail) or
-signing/encrypting emails via CMS (commonly known as S/MIME).
+signing/encrypting emails via CMS (commonly known as S/MIME). It also has
+support for IMAP so that sent mails can be stored in a "Sent" folder using the
+same mechanism as sending them through SMTP.
 
 ## Usage
 For usage of mailcoil you first need to define a dropoff at which mails should
