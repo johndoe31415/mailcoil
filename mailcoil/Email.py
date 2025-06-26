@@ -25,7 +25,6 @@ import time
 import textwrap
 import dataclasses
 import mimetypes
-from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.nonmultipart import MIMENonMultipart
 import mailcoil

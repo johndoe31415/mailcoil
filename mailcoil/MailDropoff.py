@@ -116,7 +116,7 @@ class MailDropoff():
 					except imaplib.IMAP4.error as e:
 						raise MaildropFailedException(f"Login to {self._scheme.name} server {self._host}:{self._port} failed: {str(e)}") from e
 				else:
-					raise MaildropFailedException(f"IMAP delivery requires authentication.")
+					raise MaildropFailedException("IMAP delivery requires authentication.")
 
 				(status, imap_rsp) = conn.select(mailbox = self._path)
 				if status != "OK":
