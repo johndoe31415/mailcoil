@@ -264,3 +264,12 @@ class Email():
 		if len(self._bcc) > 0:
 			msg["BCC"] = ", ".join([address.encode() for address in self._bcc ])
 		return SerializedEmail(content = msg, recipients = [ addr.mail for addr in (self._to + self._cc + self._bcc) ])
+
+	def __format__(self, fmt_str: str):
+		if self.subject is None:
+			text = "-no subject-"
+		else:
+			text = f"\"{self.subject}\""
+		text += f" from {self._from.mail}"
+		text += f" to {', '.join(mail.mail for mail in self._to)}"
+		return text
