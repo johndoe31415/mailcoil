@@ -99,4 +99,4 @@ from .Email import Email, MailAddress
 from .CMS import CMS
 from .Exceptions import MailCoilException
 
-VERSION = "0.0.3rc0"
+VERSION = "0.0.3"
