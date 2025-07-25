@@ -246,6 +246,25 @@ class Email():
 			msg["BCC"] = ", ".join([address.encode() for address in self._bcc ])
 		return SerializedEmail(content = msg, recipients = [ addr.mail for addr in (self._to + self._cc + self._bcc) ])
 
+	def to_dict(self):
+		msg = {
+			"date": self._datetime,
+			"message_id": self._message_id,
+			"from": dataclasses.asdict(self._from),
+			"to": [ dataclasses.asdict(addr) for addr in self._to ],
+		}
+		if self.subject is not None:
+			msg["subject"] = self.subject
+		if len(self._cc) > 0:
+			msg["cc"] = [ dataclasses.asdict(addr) for addr in self._cc ]
+		if len(self._bcc) > 0:
+			msg["bcc"] = [ dataclasses.asdict(addr) for addr in self._bcc ]
+		if self._text is not None:
+			msg["text"] = self._text
+		if self._html is not None:
+			msg["html"] = self._html
+		return msg
+
 	def __format__(self, fmt_str: str):
 		if self.subject is None:
 			text = "-no subject-"
