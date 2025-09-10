@@ -19,6 +19,7 @@
 #
 #	Johannes Bauer <JohannesBauer@gmx.de>
 
+import datetime
 import enum
 import urllib.parse
 import time
@@ -35,6 +36,7 @@ class MailDropoff():
 		SMTP_STARTTLS = "smtp+startls"
 		IMAP = "imap"
 		IMAPS = "imaps"
+		FILE = "file"
 
 	_SCHEME_BY_NAME = { scheme.value: scheme for scheme in Scheme }
 
@@ -50,12 +52,15 @@ class MailDropoff():
 				self.Scheme.SMTP_STARTTLS:	25,
 				self.Scheme.IMAP:			143,
 				self.Scheme.IMAPS:			993,
+				self.Scheme.FILE:			None,
 			}[self._scheme]
 		else:
 			self._port = port
 		self._username = username
 		self._password = password
-		self._path = (path or "").lstrip("/")
+		self._path = path or ""
+		if self._scheme != self.Scheme.FILE:
+			self._path = self._path.lstrip("/")
 		if self._path == "":
 			self._path = None
 		if (self._scheme in [ self.Scheme.IMAP, self.Scheme.IMAPS ]) and (self._path is None):
@@ -131,11 +136,23 @@ class MailDropoff():
 			finally:
 				conn.logout()
 
+	def _postall_file(self, mails: list["Email"]):
+		post_date = datetime.datetime.now().strftime("%a %b %d %H:%M:%S %Y")
+		with open(self._path, "a") as f:
+			for mail in mails:
+				print(f"From - {post_date}", file = f)
+				print("X-Mozilla-Status: 0000", file = f)
+				serialized_mail = mail.serialize()
+				f.write(bytes(serialized_mail.content).decode("utf-8"))
+				print(file = f)
+
 	def postall(self, mails: list["Email"]):
 		if self._scheme in [ self.Scheme.LMTP, self.Scheme.LMTP_STARTTLS, self.Scheme.SMTP, self.Scheme.SMTPS, self.Scheme.SMTP_STARTTLS ]:
 			return self._postall_smtp(mails)
 		elif self._scheme in [ self.Scheme.IMAP, self.Scheme.IMAPS ]:
 			return self._postall_imap(mails)
+		elif self._scheme == self.Scheme.FILE:
+			return self._postall_file(mails)
 		else:
 			raise NotImplementedError(self._scheme)
 
