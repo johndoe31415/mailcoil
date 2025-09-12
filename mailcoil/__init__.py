@@ -91,6 +91,16 @@ A complete example is therefore:
 	# Sign and encrypt
 	mail.security = mailcoil.CMS().sign(signer_keyfile = "my_key.pem", signer_certfile = "my_cert.pem", ca_certfile = "my_ca.pem").encrypt("target1.pem", "target2.pem", "target3.pem")
 
+	# Send mail through the dropoff
+	dropoff.post(mail)
+
+Another, shorter example, that showcases local debugging capabilities and will
+write a local file /tmp/mailbox.txt that is compatible with Thunderbird:
+
+	import mailcoil
+	dropoff = mailcoil.MailDropoff.parse_uri("file:///tmp/mailbox.txt")
+	mail = mailcoil.Email(from_address = "Johannes Bauer <johannes.bauer@gmx.de>", subject = "What's up?").to("someone@gmx.de")
+	mail.text = "This is a test email."
 	dropoff.post(mail)
 """
 
