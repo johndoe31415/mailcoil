@@ -26,8 +26,10 @@ import textwrap
 import dataclasses
 import mimetypes
 import email.policy
+import email.parser
 import mailcoil
 from .Exceptions import NoRecipientException, NoBodyException
+from .SerializedEmail import SerializedEmail
 
 @dataclasses.dataclass
 class MailAddress():
@@ -60,11 +62,6 @@ class MailAddress():
 	@classmethod
 	def parsemany(cls, addrs: str):
 		return [ cls.parse(addr) for addr in addrs.split(",") ]
-
-@dataclasses.dataclass
-class SerializedEmail():
-	recipients: list[str]
-	content: bytes
 
 @dataclasses.dataclass(slots = True)
 class Attachment():
@@ -188,7 +185,6 @@ class Email():
 			wrapped += parwrapped
 		return "\n".join(wrapped)
 
-
 	def _layer_text_content(self):
 		if self.recipient_count == 0:
 			raise NoRecipientException("Mail has no To, CC, or BCC set. Unable to serialize.")
@@ -245,6 +241,20 @@ class Email():
 		if len(self._bcc) > 0:
 			msg["BCC"] = ", ".join([address.encode() for address in self._bcc ])
 		return SerializedEmail(content = msg, recipients = [ addr.mail for addr in (self._to + self._cc + self._bcc) ])
+
+	@classmethod
+	def serialize_from_email_message(cls, parsed_msg: "email.message.EmailMessage"):
+		def _extract_addrs(header_value):
+			if header_value is None:
+				return [ ]
+			return [ email_addr for (email_name, email_addr) in email.utils.getaddresses([ header_value ]) ]
+		recipients = _extract_addrs(parsed_msg["To"]) + _extract_addrs(parsed_msg["CC"]) + _extract_addrs(parsed_msg["BCC"])
+		return SerializedEmail(content = str(parsed_msg), recipients = recipients)
+
+	@classmethod
+	def serialize_from_bytes(cls, email_msg: bytes):
+		parsed_msg = email.parser.BytesParser().parsebytes(email_msg)
+		return cls.serialize_from_email_message(parsed_msg)
 
 	def to_dict(self):
 		msg = {

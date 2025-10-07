@@ -26,6 +26,7 @@ import time
 import smtplib
 import imaplib
 from .Exceptions import MaildropFailedException
+from .SerializedEmail import SerializedEmail
 
 class MailDropoff():
 	class Scheme(enum.Enum):
@@ -96,7 +97,7 @@ class MailDropoff():
 	def password(self, value: str):
 		self._password = value
 
-	def _postall_smtp(self, mails: list["Email"]):
+	def _postall_smtp(self, serialized_mails: list["SerializedEmail"]):
 		conn_class = smtplib.SMTP_SSL if (self._scheme == self.Scheme.SMTPS) else smtplib.SMTP
 		with conn_class(self._host, self._port) as conn:
 			try:
@@ -105,13 +106,12 @@ class MailDropoff():
 				if (self._username is not None) and (self._password is not None):
 					conn.login(self._username, self._password)
 
-				for mail in mails:
-					serialized_mail = mail.serialize()
+				for serialized_mail in serialized_mails:
 					conn.send_message(serialized_mail.content, to_addrs = serialized_mail.recipients)
 			finally:
 				conn.quit()
 
-	def _postall_imap(self, mails: list["Email"]):
+	def _postall_imap(self, serialized_mails: list["SerializedEmail"]):
 		conn_class = imaplib.IMAP4_SSL if (self._scheme == self.Scheme.IMAPS) else imaplib.IMAP4
 		with conn_class(self._host, self._port) as conn:
 			try:
@@ -127,8 +127,7 @@ class MailDropoff():
 				if status != "OK":
 					raise MaildropFailedException(f"No such IMAP mailbox \"{self._path}\" on {self._host}:{self._port}: {str(imap_rsp)}")
 
-				for mail in mails:
-					serialized_mail = mail.serialize()
+				for serialized_mail in serialized_mails:
 					imap_date_time = imaplib.Time2Internaldate(time.time())
 					(status, imap_rsp) = conn.append(mailbox = self._path, flags = None, date_time = imap_date_time, message = bytes(serialized_mail.content))
 					if status != "OK":
@@ -136,23 +135,23 @@ class MailDropoff():
 			finally:
 				conn.logout()
 
-	def _postall_file(self, mails: list["Email"]):
+	def _postall_file(self, serialized_mails: list["SerializedEmail"]):
 		post_date = datetime.datetime.now().strftime("%a %b %d %H:%M:%S %Y")
 		with open(self._path, "a") as f:
-			for mail in mails:
+			for serialized_mail in serialized_mails:
 				print(f"From - {post_date}", file = f)
 				print("X-Mozilla-Status: 0000", file = f)
-				serialized_mail = mail.serialize()
 				f.write(bytes(serialized_mail.content).decode("utf-8"))
 				print(file = f)
 
 	def postall(self, mails: list["Email"]):
+		serialized_mails = [ mail if isinstance(mail, SerializedEmail) else mail.serialize() for mail in mails ]
 		if self._scheme in [ self.Scheme.LMTP, self.Scheme.LMTP_STARTTLS, self.Scheme.SMTP, self.Scheme.SMTPS, self.Scheme.SMTP_STARTTLS ]:
-			return self._postall_smtp(mails)
+			return self._postall_smtp(serialized_mails)
 		elif self._scheme in [ self.Scheme.IMAP, self.Scheme.IMAPS ]:
-			return self._postall_imap(mails)
+			return self._postall_imap(serialized_mails)
 		elif self._scheme == self.Scheme.FILE:
-			return self._postall_file(mails)
+			return self._postall_file(serialized_mails)
 		else:
 			raise NotImplementedError(self._scheme)
 

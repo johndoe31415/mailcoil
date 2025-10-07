@@ -40,42 +40,47 @@ class CLIMailer():
 		return (self._args.auth_username, password)
 
 	def run(self):
-		mail = mailcoil.Email(from_address = getattr(self._args, "from"), wrap_text = self._args.wrap_text)
-		if self._args.subject:
-			mail.subject = self._args.subject
+		if self._args.mail_from_file is None:
+			mail = mailcoil.Email(from_address = getattr(self._args, "from"), wrap_text = self._args.wrap_text)
+			if self._args.subject:
+				mail.subject = self._args.subject
 
-		mail.to(*self._args.to)
-		mail.cc(*self._args.cc)
-		mail.bcc(*self._args.bcc)
+			mail.to(*self._args.to)
+			mail.cc(*self._args.cc)
+			mail.bcc(*self._args.bcc)
 
-		if self._args.text is not None:
-			with open(self._args.text) as f:
-				mail.text = f.read()
+			if self._args.text is not None:
+				with open(self._args.text) as f:
+					mail.text = f.read()
 
-		if self._args.html is not None:
-			with open(self._args.html) as f:
-				mail.html = f.read()
+			if self._args.html is not None:
+				with open(self._args.html) as f:
+					mail.html = f.read()
 
-		for filename in self._args.attach_file:
-			mail.attach(filename)
-		for filename in self._args.attach_file_inline:
-			mail.attach(filename, inline = True)
+			for filename in self._args.attach_file:
+				mail.attach(filename)
+			for filename in self._args.attach_file_inline:
+				mail.attach(filename, inline = True)
 
-		if (self._args.smime_sign is not None) or (len(self._args.smime_encrypt) > 0):
-			mail.security = mailcoil.CMS()
-			if (self._args.smime_sign is not None):
-				mail.security.sign(signer_certfile = self._args.smime_sign["cert"], signer_keyfile = self._args.smime_sign["key"], ca_certfile = self._args.smime_sign.get("ca"))
-			mail.security.encrypt(*self._args.smime_encrypt)
+			if (self._args.smime_sign is not None) or (len(self._args.smime_encrypt) > 0):
+				mail.security = mailcoil.CMS()
+				if (self._args.smime_sign is not None):
+					mail.security.sign(signer_certfile = self._args.smime_sign["cert"], signer_keyfile = self._args.smime_sign["key"], ca_certfile = self._args.smime_sign.get("ca"))
+				mail.security.encrypt(*self._args.smime_encrypt)
+			serialized_mail = mail.serialize()
+		else:
+			with open(self._args.mail_from_file, "rb") as f:
+				serialized_mail = mailcoil.Email.serialize_from_bytes(f.read())
 
 		if self._args.smtp_server_uri is None:
-			print(mail.serialize().content)
+			print(serialized_mail.content)
 		else:
 			dropoff = mailcoil.MailDropoff.parse_uri(self._args.smtp_server_uri)
 			(username, password) = self._get_username_password()
 			if username is not None:
 				dropoff.username = username
 				dropoff.password = password
-			dropoff.post(mail)
+			dropoff.post(serialized_mail)
 
 def main():
 	def sign_params(text):
@@ -91,7 +96,11 @@ def main():
 	parser.add_argument("-u", "--smtp-server-uri", metavar = "uri", help = "SMTP server dropoff in URI format. E.g., 'smtp://127.0.0.1', or 'smtps://mail.gmx.net:1122'. If omitted, just prints the mail on the command line.")
 	parser.add_argument("-U", "--auth-username", metavar = "username", help = "Authenticate against SMTP server using this username.")
 	parser.add_argument("--auth-password", metavar = "filename", help = "When using authentication, read the password from this file. Otherwise, password is requested on the command line.")
-	parser.add_argument("-f", "--from", metavar = "email", required = True, help = "From address. Mandatory argument.")
+
+	mutex = parser.add_mutually_exclusive_group(required = True)
+	mutex.add_argument("-F", "--mail-from-file", metavar = "filename", help = "File which contains complete content of email when not composing new.")
+	mutex.add_argument("-f", "--from", metavar = "email", help = "From address when composing a new mail.")
+
 	parser.add_argument("-s", "--subject", metavar = "text", help = "Text to use as subject.")
 	parser.add_argument("-t", "--to", metavar = "email", action = "append", default = [ ], help = "Send email to this address in the 'To' field. May be specified multiple times.")
 	parser.add_argument("-c", "--cc", metavar = "email", action = "append", default = [ ], help = "Send email to this address in the 'CC' field. May be specified multiple times.")
