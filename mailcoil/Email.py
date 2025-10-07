@@ -249,7 +249,7 @@ class Email():
 				return [ ]
 			return [ email_addr for (email_name, email_addr) in email.utils.getaddresses([ header_value ]) ]
 		recipients = _extract_addrs(parsed_msg["To"]) + _extract_addrs(parsed_msg["CC"]) + _extract_addrs(parsed_msg["BCC"])
-		return SerializedEmail(content = str(parsed_msg), recipients = recipients)
+		return SerializedEmail(content = parsed_msg, recipients = recipients)
 
 	@classmethod
 	def serialize_from_bytes(cls, email_msg: bytes):
