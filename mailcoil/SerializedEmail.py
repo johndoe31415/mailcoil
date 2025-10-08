@@ -20,8 +20,34 @@
 #	Johannes Bauer <JohannesBauer@gmx.de>
 
 import dataclasses
+import email.header
+import email.utils
 
 @dataclasses.dataclass
 class SerializedEmail():
 	recipients: list[str]
-	content: bytes
+	content: "email.Message"
+
+	@property
+	def subject(self):
+		"""Returns best-effort decoding of the email subject (may not be
+		possible if the raw message is malformed."""
+		subject = self.content["Subject"]
+		if subject is None:
+			return None
+		parts = email.header.decode_header(subject)
+		decoded = [ ]
+		for (raw_encoding, codec_name) in parts:
+			if isinstance(raw_encoding, str):
+				decoded.append(raw_encoding)
+			else:
+				decoded.append(raw_encoding.decode(codec_name or "utf-8", errors = "ignore"))
+		return "".join(decoded)
+
+	@property
+	def from_addr(self):
+		from_addr = self.content["From"]
+		if from_addr is None:
+			return None
+		addresses = email.utils.getaddresses([ from_addr ])
+		return addresses[0]
