@@ -78,6 +78,7 @@ class Email():
 		self._to = [ ]
 		self._cc = [ ]
 		self._bcc = [ ]
+		self._reply_to = None
 		self._subject = subject
 		self._text = text
 		self._wrap_text = wrap_text
@@ -102,6 +103,10 @@ class Email():
 
 	def bcc(self, *mail_addresses: tuple[MailAddress | str]):
 		self._bcc += [ MailAddress.parse(addr) for addr in mail_addresses ]
+		return self
+
+	def reply_to(self, mail_address: MailAddress | str):
+		self._reply_to = MailAddress.parse(mail_address)
 		return self
 
 	@property
@@ -240,6 +245,8 @@ class Email():
 			msg["CC"] = ", ".join([address.encode() for address in self._cc ])
 		if len(self._bcc) > 0:
 			msg["BCC"] = ", ".join([address.encode() for address in self._bcc ])
+		if self._reply_to is not None:
+			msg["Reply-To"] = self._reply_to.encode()
 		return SerializedEmail(content = msg, recipients = [ addr.mail for addr in (self._to + self._cc + self._bcc) ])
 
 	@classmethod
